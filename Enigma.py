@@ -67,7 +67,7 @@ class Enigma:
         se = self.__prerotor(c)
         for i in self.rotor:
             se = self.rotor[i].fcode(se)
-        fc = 99 - se
+        fc = len(self.characters) - 1 - se
         for i in range(self.number_of_rotors - 1, -1,-1):
             fc = self.rotor[i].bcode(fc)
         fe = self.__postrotor(fc)
