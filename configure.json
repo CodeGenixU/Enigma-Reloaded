@@ -2,7 +2,7 @@
     "setting" : {
         "number_of_rotor" : 3,
         "sequence_of_rotor" : "r1>r2>r3",
-        "iteration": 0,
+        "iteration": 25,
         "n": 3,
         "plugs": ["ABCD"]
     },
