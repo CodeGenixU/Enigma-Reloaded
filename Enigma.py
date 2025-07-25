@@ -1,37 +1,39 @@
 import json
 
 class Rotor:
-    def __init__(self, r, p, cls):
-        self.iter = cls.iteration
-        self.n = cls.n
-        if self.iter != 0:
-            self.rotor = r[self.iter:] + r[0:self.iter] 
+    def __init__(self, rotor, rotor_position, cls):
+        self.iteration = cls.iteration
+        self.n = cls.rotation_base
+        self.position = rotor_position
+        if self.iteration != 0:
+            rotation_factor = self.iteration % (self.n)**self.position
+            self.rotor = rotor[rotation_factor:] + rotor[0:rotation_factor] 
         else :
-            self.rotor = r
-        self.position = p
+            self.rotor = rotor
+        
     def rotate(self):
         self.rotor.append(self.rotor.pop(0))
 
     def fcode(self, n):
-        if self.iter % (self.n)**self.position == 0:
+        if self.iteration % (self.n)**self.position == 0:
             self.rotate()
-        N = self.rotor[n]
-        return N
+        return self.rotor[n]
     
-    def bcode(self, n): return self.rotor.index(n)
+    def bcode(self, n): 
+        return self.rotor.index(n)
 
 class plug:
-    def __init__(self, p):
-        self.fplugs = list(p)
-        self.bplugs = list(p)[::-1]
+    def __init__(self, Plug):
+        self.fplugs = list(Plug)
+        self.bplugs = list(Plug)[::-1]
     
     @staticmethod
-    def search(pl, char):
-        x = pl.index(char) + 1
-        return pl[x if x < len(pl) else 0]
+    def search(plug_cycle, character):
+        x = plug_cycle.index(character) + 1
+        return plug_cycle[x if x < len(plug_cycle) else 0]
     
-    def plugs(self, char, mode):
-        return self.search(self.fplugs, char) if mode == 0 else self.search(self.bplugs, char)
+    def plugs(self, character, mode):
+        return self.search(self.fplugs, character) if mode == 0 else self.search(self.bplugs, character)
  
 class Enigma:
     def __init__(self, file):
@@ -39,7 +41,7 @@ class Enigma:
             key = json.load(fh)
             self.number_of_rotors = key["setting"]["number_of_rotor"]
             self.iteration = key["setting"]["iteration"]
-            self.n = key["setting"]["n"]
+            self.rotation_base = key["setting"]["n"]
             self.rotor = {}
             for i in range(self.number_of_rotors):
                 self.rotor[i] = Rotor(key[key["setting"]["sequence_of_rotor"].split(">")[i]], i, self)
@@ -62,20 +64,16 @@ class Enigma:
     def __postrotor(self, char):
         return self.characters[char]
 
-    def __encode(self, char):
-        c = self.__plugin(char)
-        se = self.__prerotor(c)
+    def encode(self, char):
+        first_encode = self.__plugin(char)
+        rotor_encode = self.__prerotor(first_encode)
         for i in self.rotor:
-            se = self.rotor[i].fcode(se)
-        fc = len(self.characters) - 1 - se
+            rotor_encode = self.rotor[i].fcode(rotor_encode)
+        reflector = len(self.characters) - 1 - rotor_encode
         for i in range(self.number_of_rotors - 1, -1,-1):
-            fc = self.rotor[i].bcode(fc)
-        fe = self.__postrotor(fc)
-        e = self.__plugin(fe,1)
-        return e
-    
-    def main(self, character):
-        code = self.__encode(character)
+            reflector = self.rotor[i].bcode(reflector)
+        rotor_decode = self.__postrotor(reflector)
+        final_encode = self.__plugin(rotor_decode,1)
         self.iteration += 1
-            
-        return code
+        return final_encode
+    
