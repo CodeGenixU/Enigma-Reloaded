@@ -1,6 +1,6 @@
 """
 Enigma Reloaded - Beast of an Ancient Legend
------------------------
+--------------------------------------------
 This module simulates the Enigma encryption machine, including rotors, plugboard, and encoding logic.
 Configuration is loaded from a JSON file (see configure.json for format).
 
@@ -9,23 +9,81 @@ Configuration File (configure.json) Structure:
 {
     "setting": {
         "number_of_rotors": int,         # Number of rotors in the machine
-        "sequence_of_rotor": str,       # Sequence of rotors, e.g., "r1>r2>r3"
-        "iteration": int,               # Initial iteration (rotor position/step)
-        "n": int,                       # Rotation base (affects stepping)
-        "plugs": [str, ...]             # List of plugboard cycles (e.g., ["ABCD"])
+        "sequence_of_rotor": str,        # Sequence of rotors, e.g., "r1>r2>r3"
+        "iteration": int,                # Initial iteration (rotor position/step)
+        "n": int,                        # Rotation base (affects stepping)
+        "plugs": [str, ...]              # List of plugboard cycles (e.g., ["ABCD"])
     },
-    "characters": [str, ...],           # List of all valid characters for encoding
-    "r1": [int, ...],                   # Rotor 1 wiring (permutation of indices)
-    "r2": [int, ...],                   # Rotor 2 wiring
-    "r3": [int, ...]                    # Rotor 3 wiring
+    "characters": [str, ...],            # List of all valid characters for encoding
+    "r1": [int, ...],                    # Rotor 1 wiring (permutation of indices)
+    "r2": [int, ...],                    # Rotor 2 wiring
+    "r3": [int, ...]                     # Rotor 3 wiring
     // ... more rotors as needed
 }
 
 - The "setting" object defines the machine's configuration.
-- "characters" is the alphabet used for encoding/decoding.
+- "characters" is the character set used for encoding/decoding.
 - Each "rX" key defines a rotor's wiring as a permutation of character indices.
+
+Module Contents:
+----------------
+- plug_test(Plugs): Checks for repeated characters in plugboard cycles.
+- rotor_test(n, rotor): Validates rotor wiring as a permutation of n indices.
+- pretest(file): Validates configuration file for consistency and correctness.
+- Rotor: Class representing a single rotor.
+- plug: Class representing a plugboard cycle.
+- Enigma: Main class for encoding/decoding using the Enigma machine.
 """
+
 import json
+
+def plug_test(Plugs):
+    repeated_characters = []
+    n = len(Plugs)
+    for i in range(n):
+        for j in Plugs[i]:
+            for k in range(i + 1, n):
+                if j in Plugs[k] and j not in repeated_characters:
+                    repeated_characters.append(j)
+    return repeated_characters if repeated_characters else True
+
+
+def rotor_test(n, rotor):
+    l = [i for i in range(n)]
+    extra_element = []
+    missing_element = []
+    for i in rotor:
+        l.remove(i) if i in l else extra_element.append(i)
+    if len(l) != 0:
+        missing_element = l
+    if len(extra_element) == 0 and len(missing_element) == 0:
+        return True
+    else :
+        return {"Extra element" : extra_element, "Missing Element" : missing_element}
+
+def pretest(file):
+    with open(file, "r", encoding="utf-8") as fh:
+        key = json.load(fh)
+        number_of_characters = len(key["characters"])
+        number_of_rotors = key["setting"]["number_of_rotors"]
+        sequence_of_rotor = key["setting"]["sequence_of_rotor"].split(">")
+        check_list = {"Configuration" : True, "Plugs" : True}
+        error_list = {}
+        for i in sequence_of_rotor:
+            check_list[i] = True
+        if number_of_rotors != len(sequence_of_rotor):
+            check_list["Configuration"] = False
+        plug_result = plug_test(key["setting"]["plugs"])
+        if plug_result != True:
+            check_list["Plugs"] = False
+            error_list["Repeating characters in plugs"] = plug_result
+        for i in sequence_of_rotor:
+            rotor_result = rotor_test(number_of_characters, key[i])
+            if rotor_result!= True:
+                check_list[i] = False
+                error_list[i] = rotor_result
+    return (check_list, error_list)
+
 
 class Rotor:
     """
@@ -120,15 +178,32 @@ class Enigma:
     """
     Main Enigma machine class. Handles loading configuration, managing rotors and plugboard, and encoding characters.
     """
+    def __new__(cls, file):
+        """
+        Validate configuration before creating an Enigma instance.
+        Args:
+            file (str): Path to the JSON configuration file.
+        Returns:
+            Enigma instance or None if validation fails.
+        """
+        precheck = pretest(file)
+        if len(precheck[1]) != 0:
+            print(precheck[0])
+            for i in precheck[1]:
+                print( i, " -", precheck[1][i])
+            return None
+        return super().__new__(cls)
+    
     def __init__(self, file):
         """
         Initialize the Enigma machine from a configuration file.
         Args:
             file (str): Path to the JSON configuration file.
         """
+
         with open(file, "r", encoding = "utf-8") as fh:
             key = json.load(fh)
-            self.number_of_rotors = key["setting"]["number_of_rotor"]
+            self.number_of_rotors = key["setting"]["number_of_rotors"]
             self.iteration = key["setting"]["iteration"]
             self.rotation_base = key["setting"]["n"]
             self.rotor = {}
@@ -185,6 +260,9 @@ class Enigma:
         Returns:
             str: Encoded or decoded character.
         """
+        # Validates input from character set
+        if char not in self.characters:
+            raise ValueError(char, " is not in the character list.")
         # Pass through plugboard (forward)
         first_encode = self.__plugin(char)
         # Convert to index
@@ -204,4 +282,4 @@ class Enigma:
         # Advance iteration (rotor stepping)
         self.iteration += 1
         return final_encode
-    
+
