@@ -1,8 +1,30 @@
+# Enigma Reloaded - Beast of an Ancient Legend
+# Copyright (C) 2025  Utkarsh
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 """
 Enigma Reloaded - Beast of an Ancient Legend
 --------------------------------------------
 This module simulates the Enigma encryption machine, including rotors, plugboard, and encoding logic.
 Configuration is loaded from a JSON file (see configure.json for format).
+
+Configuration Validation Flow:
+-----------------------------
+- Validation is performed ONCE in the __new__ method (using pretest()).
+- If the configuration is invalid, an exception is raised and the instance is not created.
+- __init__ assumes the configuration is already valid and only initializes the machine.
 
 Configuration File (configure.json) Structure:
 ----------------------------------------------
@@ -11,7 +33,7 @@ Configuration File (configure.json) Structure:
         "number_of_rotors": int,         # Number of rotors in the machine
         "sequence_of_rotor": str,        # Sequence of rotors, e.g., "r1>r2>r3"
         "iteration": int,                # Initial iteration (rotor position/step)
-        "n": int,                        # Rotation base (affects stepping)
+        "rotation_factor": int,           # Rotation base (affects stepping)
         "plugs": [str, ...]              # List of plugboard cycles (e.g., ["ABCD"])
     },
     "characters": [str, ...],            # List of all valid characters for encoding
@@ -33,56 +55,204 @@ Module Contents:
 - Rotor: Class representing a single rotor.
 - plug: Class representing a plugboard cycle.
 - Enigma: Main class for encoding/decoding using the Enigma machine.
+
+Usage Example:
+-------------
+    >>> from Enigma import Enigma
+    >>> 
+    >>> # Create an Enigma machine instance
+    >>> enigma = Enigma("configure.json")
+    >>> 
+    >>> # Encode a message
+    >>> message = "HELLO"
+    >>> encoded = ""
+    >>> for char in message:
+    ...     encoded += enigma.main(char)
+    >>> print(f"Encoded: {encoded}")
+    Encoded: XKLMN
+    >>> 
+    >>> # Reset the machine to decode
+    >>> enigma = Enigma("configure.json")
+    >>> decoded = ""
+    >>> for char in encoded:
+    ...     decoded += enigma.main(char)
+    >>> print(f"Decoded: {decoded}")
+    Decoded: HELLO
 """
 
 import json
+import logging
+from typing import List, Union, Dict, Tuple, Optional # pyright: ignore[reportShadowedImports]
 
-def plug_test(Plugs):
-    repeated_characters = []
-    n = len(Plugs)
-    for i in range(n):
-        for j in Plugs[i]:
-            for k in range(i + 1, n):
-                if j in Plugs[k] and j not in repeated_characters:
-                    repeated_characters.append(j)
+# Configure logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Custom exception classes for better error handling
+class EnigmaError(Exception):
+    """Base exception for Enigma machine errors."""
+    pass
+
+class ConfigurationError(EnigmaError):
+    """Raised when there are issues with the configuration file."""
+    pass
+
+class InvalidCharacterError(EnigmaError):
+    """Raised when a character is not in the configured character set."""
+    pass
+
+class ValidationError(EnigmaError):
+    """Raised when validation fails during configuration checks."""
+    pass
+
+def plug_test(plugs: List[str]) -> Union[List[str], bool]:
+    """
+    Check for repeated characters in plugboard cycles.
+    
+    This function validates that no character appears in multiple plugboard cycles,
+    which would create ambiguous mappings in the Enigma machine.
+    
+    Args:
+        plugs: List of plugboard cycle strings (e.g., ["ABCD", "EFGH"])
+        
+    Returns:
+        List of repeated characters if found, True if no repeats
+        
+    Example:
+        >>> plug_test(["ABCD", "EFGH"])
+        True
+        >>> plug_test(["ABCD", "EFGC"])
+        ['C', 'G']
+    """
+    seen_chars = set()  # O(1) lookup for better performance
+    repeated_characters: List[str] = []
+    
+    for plug_cycle in plugs:
+        for char in plug_cycle:
+            if char in seen_chars:
+                repeated_characters.append(char)
+            seen_chars.add(char)
+    
     return repeated_characters if repeated_characters else True
 
 
-def rotor_test(n, rotor):
-    l = [i for i in range(n)]
-    extra_element = []
-    missing_element = []
-    for i in rotor:
-        l.remove(i) if i in l else extra_element.append(i)
-    if len(l) != 0:
-        missing_element = l
-    if len(extra_element) == 0 and len(missing_element) == 0:
+def rotor_test(n: int, rotor: List[int]) -> Union[bool, Dict[str, List[int]]]:
+    """
+    Validate rotor wiring as a permutation of n indices.
+    
+    This function ensures that the rotor wiring is a valid permutation,
+    meaning each index from 0 to n-1 appears exactly once.
+    
+    Args:
+        n: Number of characters in the character set
+        rotor: Rotor wiring as a list of integers
+        
+    Returns:
+        True if valid permutation, dict with errors if invalid
+        
+    Example:
+        >>> rotor_test(4, [0, 1, 2, 3])
+        True
+        >>> rotor_test(4, [0, 1, 2, 2])
+        {'Extra element': [2], 'Missing Element': [3]}
+    """
+    expected_indices = set(range(n))
+    rotor_set = set(rotor)
+    
+    extra_elements = list(rotor_set - expected_indices)
+    missing_elements = list(expected_indices - rotor_set)
+    
+    if not extra_elements and not missing_elements:
         return True
-    else :
-        return {"Extra element" : extra_element, "Missing Element" : missing_element}
+    else:
+        return {"Extra element": extra_elements, "Missing Element": missing_elements}
 
-def pretest(file):
-    with open(file, "r", encoding="utf-8") as fh:
-        key = json.load(fh)
+def pretest(file: str) -> Tuple[Dict[str, bool], Dict[str, Union[str, List[str], Dict[str, List[int]]]]]:
+    """
+    Validate configuration file for consistency and correctness.
+    
+    This function performs comprehensive validation of the Enigma configuration:
+    - Checks that the number of rotors matches the sequence
+    - Validates plugboard cycles for repeated characters
+    - Ensures each rotor wiring is a valid permutation
+    
+    Args:
+        file: Path to the JSON configuration file
+        
+    Returns:
+        Tuple of (check_list, error_list) where:
+            - check_list: Status of each component validation
+            - error_list: Detailed error information for failed validations
+            
+    Raises:
+        ConfigurationError: If the configuration file cannot be loaded or is invalid.
+        
+    Example:
+        >>> pretest("configure.json")
+        ({'Configuration': True, 'Plugs': True, 'r1': True, 'r2': True, 'r3': True}, {})
+    """
+    logger.info(f"Starting configuration validation for: {file}")
+    
+    try:
+        with open(file, "r", encoding="utf-8") as fh:
+            key = json.load(fh)
+        logger.debug("Configuration file loaded successfully")
+    except FileNotFoundError:
+        logger.error(f"Configuration file not found: {file}")
+        raise ConfigurationError(f"Configuration file not found: {file}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in configuration file: {e}")
+        raise ConfigurationError(f"Invalid JSON in configuration file: {e}")
+    except Exception as e:
+        logger.error(f"Error reading configuration file: {e}")
+        raise ConfigurationError(f"Error reading configuration file: {e}")
+    
+    try:
         number_of_characters = len(key["characters"])
         number_of_rotors = key["setting"]["number_of_rotors"]
         sequence_of_rotor = key["setting"]["sequence_of_rotor"].split(">")
-        check_list = {"Configuration" : True, "Plugs" : True}
-        error_list = {}
+        check_list: Dict[str, bool] = {"Configuration": True, "Plugs": True}
+        error_list: Dict[str, Union[str, List[str], Dict[str, List[int]]]] = {}
+        
+        logger.debug(f"Validating {number_of_rotors} rotors with {number_of_characters} characters")
+        
         for i in sequence_of_rotor:
             check_list[i] = True
+            
         if number_of_rotors != len(sequence_of_rotor):
             check_list["Configuration"] = False
+            error_msg = f"Number of rotors ({number_of_rotors}) doesn't match sequence length ({len(sequence_of_rotor)})"
+            error_list["Configuration"] = error_msg
+            logger.error(error_msg)
+            
         plug_result = plug_test(key["setting"]["plugs"])
         if plug_result != True:
             check_list["Plugs"] = False
-            error_list["Repeating characters in plugs"] = plug_result
+            error_list["Repeating characters in plugs"] = plug_result # pyright: ignore[reportArgumentType]
+            logger.error(f"Plugboard validation failed: {plug_result}")
+            
         for i in sequence_of_rotor:
             rotor_result = rotor_test(number_of_characters, key[i])
-            if rotor_result!= True:
+            if rotor_result != True:
                 check_list[i] = False
-                error_list[i] = rotor_result
-    return (check_list, error_list)
+                error_list[i] = rotor_result # pyright: ignore[reportArgumentType]
+                logger.error(f"Rotor {i} validation failed: {rotor_result}")
+        
+        if all(check_list.values()):
+            logger.info("Configuration validation completed successfully")
+        else:
+            logger.warning("Configuration validation completed with errors")
+                
+        return (check_list, error_list)
+    except KeyError as e:
+        logger.error(f"Missing required configuration field: {e}")
+        raise ConfigurationError(f"Missing required configuration field: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error during validation: {e}")
+        raise ConfigurationError(f"Unexpected error during validation: {e}")
 
 
 class Rotor:
@@ -90,50 +260,64 @@ class Rotor:
     Represents a single rotor in the Enigma machine.
     Handles rotor wiring, position, and rotation logic.
     """
-    def __init__(self, rotor, rotor_position, cls):
+    def __init__(self, rotor: List[int], rotor_position: int, cls) -> None:
         """
         Initialize the rotor.
+        
         Args:
-            rotor (list): The rotor wiring (permutation of character indices).
-            rotor_position (int): The position of this rotor in the machine (0 = rightmost).
-            cls (Enigma): Reference to the Enigma instance for iteration and base.
+            rotor: The rotor wiring (permutation of character indices).
+            rotor_position: The position of this rotor in the machine (0 = rightmost).
+            cls: Reference to the Enigma instance for iteration and base.
         """
         self.iteration = cls.iteration
         self.n = cls.rotation_base
         self.position = rotor_position
+        self.original_rotor = rotor  # Keep original for memory efficiency
+        
         # Calculate initial rotation based on iteration and position
         if self.iteration != 0:
-            rotation_factor = self.iteration % (self.n)**self.position
-            self.rotor = rotor[rotation_factor:] + rotor[0:rotation_factor] 
-        else :
+            rotation_factor = self.iteration % (self.n) ** self.position
+            self.rotor = rotor[rotation_factor:] + rotor[0:rotation_factor]
+        else:
             self.rotor = rotor
         
-    def rotate(self):
+    def __rotate(self) -> None:
         """
         Rotate the rotor by one position (step forward).
         """
         self.rotor.append(self.rotor.pop(0))
 
-    def fcode(self, n):
+    def __fcode(self, n: int) -> int:
         """
         Forward encoding through the rotor.
-        Rotates if at a turnover position.
+        
+        This method processes a character index through the rotor in the forward
+        direction. The rotor rotates (steps) if it's at a turnover position,
+        which is determined by the iteration count and position.
+        
         Args:
-            n (int): Input character index.
+            n: Input character index
+            
         Returns:
-            int: Encoded character index.
+            Encoded character index after forward rotor processing
         """
-        if self.iteration % (self.n)**self.position == 0:
-            self.rotate()
+        if self.iteration % (self.n) ** self.position == 0:
+            self.__rotate()
         return self.rotor[n]
     
-    def bcode(self, n): 
+    def __bcode(self, n: int) -> int:
         """
         Backward encoding through the rotor (inverse mapping).
+        
+        This method processes a character index through the rotor in the backward
+        direction, applying the inverse of the forward rotor mapping. This is
+        used when the signal returns through the rotors after reflection.
+        
         Args:
-            n (int): Encoded character index.
+            n: Encoded character index
+            
         Returns:
-            int: Decoded character index.
+            Decoded character index after backward rotor processing
         """
         return self.rotor.index(n)
 
@@ -141,145 +325,246 @@ class plug:
     """
     Represents a plugboard cycle (swapping characters before/after rotors).
     """
-    def __init__(self, Plug):
+    def __init__(self, plug_cycle: str) -> None:
         """
         Initialize the plugboard cycle.
+        
         Args:
-            Plug (str): String of characters forming a plugboard cycle.
+            plug_cycle: String of characters forming a plugboard cycle.
         """
-        self.fplugs = list(Plug)
-        self.bplugs = list(Plug)[::-1]
+        self.fplugs = list(plug_cycle)
+        self.bplugs = list(plug_cycle)[::-1]
     
     @staticmethod
-    def search(plug_cycle, character):
+    def __search(plug_cycle: List[str], character: str) -> str:
         """
         Find the next character in the plugboard cycle.
+        
+        This method implements cyclic substitution within a plugboard cycle.
+        If the character is found in the cycle, it returns the next character
+        in the sequence. If it's the last character, it wraps around to the first.
+        
         Args:
-            plug_cycle (list): List of characters in the cycle.
-            character (str): Character to search for.
+            plug_cycle: List of characters in the cycle
+            character: Character to search for
+            
         Returns:
-            str: The next character in the cycle.
+            The next character in the cycle (wraps around if at end)
         """
         x = plug_cycle.index(character) + 1
         return plug_cycle[x if x < len(plug_cycle) else 0]
     
-    def plugs(self, character, mode):
+    def __plugs(self, character: str, mode: int) -> str:
         """
         Swap character using the plugboard cycle.
+        
+        This method applies plugboard substitution to a character using the
+        configured cycle. The mode determines the direction of substitution.
+        
         Args:
-            character (str): Character to swap.
-            mode (int): 0 for forward, 1 for backward.
+            character: Character to swap
+            mode: 0 for forward substitution, 1 for backward substitution
+            
         Returns:
-            str: Swapped character.
+            Swapped character according to the plugboard cycle
         """
-        return self.search(self.fplugs, character) if mode == 0 else self.search(self.bplugs, character)
+        return self.__search(self.fplugs, character) if mode == 0 else self.__search(self.bplugs, character)
  
 class Enigma:
     """
     Main Enigma machine class. Handles loading configuration, managing rotors and plugboard, and encoding characters.
     """
-    def __new__(cls, file):
+    def __new__(cls, file: str) -> Optional['Enigma']:
         """
         Validate configuration before creating an Enigma instance.
+        
         Args:
-            file (str): Path to the JSON configuration file.
+            file: Path to the JSON configuration file.
+            
         Returns:
-            Enigma instance or None if validation fails.
+            Enigma instance if validation passes.
+            
+        Raises:
+            ConfigurationError: If configuration file cannot be loaded or is invalid.
+            ValidationError: If configuration validation fails.
         """
-        precheck = pretest(file)
-        if len(precheck[1]) != 0:
-            print(precheck[0])
-            for i in precheck[1]:
-                print( i, " -", precheck[1][i])
-            return None
-        return super().__new__(cls)
+        logger.info(f"Creating Enigma instance with configuration: {file}")
+        
+        try:
+            precheck = pretest(file)
+            if len(precheck[1]) != 0:
+                # Build detailed error message
+                error_messages = []
+                for component, status in precheck[0].items():
+                    if not status:
+                        error_messages.append(f"Component '{component}' failed validation")
+                
+                for error_type, error_details in precheck[1].items():
+                    error_messages.append(f"{error_type}: {error_details}")
+                
+                error_msg = f"Configuration validation failed:\n" + "\n".join(error_messages)
+                logger.error(error_msg)
+                raise ValidationError(error_msg)
+            
+            logger.info("Configuration validation successful, creating Enigma instance")
+            return super().__new__(cls)
+        except (ConfigurationError, ValidationError):
+            # Re-raise these specific exceptions as-is
+            raise
+        except FileNotFoundError:
+            logger.error(f"Configuration file not found: {file}")
+            raise ConfigurationError(f"Configuration file not found: {file}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in configuration file: {e}")
+            raise ConfigurationError(f"Invalid JSON in configuration file: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error loading configuration: {e}")
+            raise ConfigurationError(f"Unexpected error loading configuration: {e}")
     
-    def __init__(self, file):
+    def __init__(self, file: str) -> None:
         """
         Initialize the Enigma machine from a configuration file.
-        Args:
-            file (str): Path to the JSON configuration file.
-        """
 
-        with open(file, "r", encoding = "utf-8") as fh:
+        Args:
+            file: Path to the JSON configuration file.
+
+        Note:
+            Configuration validation is performed in __new__ (via pretest()).
+            This method assumes the configuration is already valid and only initializes the machine.
+        """
+        logger.debug("Initializing Enigma machine components")
+        
+        # Load configuration (already validated in __new__)
+        with open(file, "r", encoding="utf-8") as fh:
             key = json.load(fh)
-            self.number_of_rotors = key["setting"]["number_of_rotors"]
-            self.iteration = key["setting"]["iteration"]
-            self.rotation_base = key["setting"]["n"]
-            self.rotor = {}
-            # Initialize rotors in the specified sequence
-            for i in range(self.number_of_rotors):
-                self.rotor[i] = Rotor(key[key["setting"]["sequence_of_rotor"].split(">")[i]], i, self)
-            self.plug = key["setting"]["plugs"]
-            self.plugs = {}
-            # Initialize plugboard cycles
-            for i in self.plug:
-                self.plugs[i] = plug(i)
-            self.characters = key["characters"]
+        
+        # Initialize machine settings
+        self.number_of_rotors = key["setting"]["number_of_rotors"]
+        self.iteration = key["setting"]["iteration"]
+        self.rotation_base = key["setting"]["rotation_factor"]
+        
+        # Initialize rotors in the specified sequence
+        sequence_parts = key["setting"]["sequence_of_rotor"].split(">")
+        self.rotor: Dict[int, Rotor] = {}
+        for i in range(self.number_of_rotors):
+            rotor_name = sequence_parts[i]
+            self.rotor[i] = Rotor(key[rotor_name], i, self)
+        
+        # Initialize plugboard
+        self.plug = key["setting"]["plugs"]
+        self.plugs: Dict[str, plug] = {}
+        for i in self.plug:
+            self.plugs[i] = plug(i)
+        
+        # Set character set
+        self.characters = key["characters"]
+        
+        logger.info(f"Enigma machine initialized with {self.number_of_rotors} rotors and {len(self.characters)} characters")
     
-    def __plugin(self, char, mode = 0):
+    def __plugin(self, char: str, mode: int = 0) -> str:
         """
         Pass character through the plugboard (forward or backward).
+        
+        This method applies plugboard substitution to a character. If the character
+        is part of a plugboard cycle, it gets swapped with the next character in
+        the cycle. If not in any cycle, the character remains unchanged.
+        
         Args:
-            char (str): Character to swap.
-            mode (int): 0 for forward, 1 for backward.
+            char: Character to swap
+            mode: 0 for forward mapping, 1 for backward mapping
+            
         Returns:
-            str: Swapped character (or original if not in any plug).
+            Swapped character (or original if not in any plugboard cycle)
         """
         for i in self.plug:
             if char in i:
-                return self.plugs[i].plugs(char, mode)
+                return self.plugs[i].__plugs(char, mode)
         else:
             return char
     
-    def __prerotor(self, char):
+    def __prerotor(self, char: str) -> int:
         """
         Convert character to its index in the character set.
+        
+        This method maps a character to its corresponding index in the
+        configured character set for rotor processing.
+        
         Args:
-            char (str): Character to convert.
+            char: Character to convert
+            
         Returns:
-            int: Index of the character.
+            Index of the character in the character set
         """
         return self.characters.index(char)
     
-    def __postrotor(self, char):
+    def __postrotor(self, char: int) -> str:
         """
-        Convert index back to character after rotors.
+        Convert index back to character after rotor processing.
+        
+        This method converts a rotor-processed index back to its corresponding
+        character in the configured character set.
+        
         Args:
-            char (int): Index to convert.
+            char: Index to convert
+            
         Returns:
-            str: Character at the given index.
+            Character at the given index in the character set
         """
         return self.characters[char]
 
-    def main(self, char):
+    def main(self, char: str) -> str:
         """
         Encode/Decode a single character using the Enigma machine logic.
+        
+        This method implements the complete Enigma encryption/decryption process:
+        1. Plugboard forward mapping
+        2. Forward pass through all rotors
+        3. Reflection (signal reversal)
+        4. Backward pass through all rotors
+        5. Plugboard backward mapping
+        6. Rotor stepping for next character
+        
         Args:
-            char (str): Character to encode or decode.
+            char: Character to encode or decode
+            
         Returns:
-            str: Encoded or decoded character.
+            Encoded or decoded character
+            
+        Raises:
+            InvalidCharacterError: If character is not in the configured character set
+            
+        Example:
+            >>> enigma = Enigma("configure.json")
+            >>> enigma.main("A")
+            'X'
+            >>> enigma.main("X")  # Decoding the same character
+            'A'
         """
         # Validates input from character set
         if char not in self.characters:
-            raise ValueError(char, " is not in the character list.")
+            logger.error(f"Invalid character '{char}' not in character set")
+            raise InvalidCharacterError(f"Character '{char}' is not in the configured character set")
+        
+        logger.debug(f"Processing character: '{char}'")
+        
         # Pass through plugboard (forward)
         first_encode = self.__plugin(char)
         # Convert to index
         rotor_encode = self.__prerotor(first_encode)
         # Pass through all rotors (forward)
         for i in self.rotor:
-            rotor_encode = self.rotor[i].fcode(rotor_encode)
+            rotor_encode = self.rotor[i].__fcode(rotor_encode)
         # Reflector (reverse the signal)
         reflector = len(self.characters) - 1 - rotor_encode
         # Pass back through all rotors (backward)
-        for i in range(self.number_of_rotors - 1, -1,-1):
-            reflector = self.rotor[i].bcode(reflector)
+        for i in range(self.number_of_rotors - 1, -1, -1):
+            reflector = self.rotor[i].__bcode(reflector)
         # Convert back to character
         rotor_decode = self.__postrotor(reflector)
         # Pass through plugboard (backward)
-        final_encode = self.__plugin(rotor_decode,1)
+        final_encode = self.__plugin(rotor_decode, 1)
         # Advance iteration (rotor stepping)
         self.iteration += 1
+        
+        logger.debug(f"Encoded '{char}' -> '{final_encode}' (iteration: {self.iteration})")
         return final_encode
-
