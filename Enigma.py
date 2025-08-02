@@ -18,15 +18,16 @@
 Enigma Reloaded - Beast of an Ancient Legend
 --------------------------------------------
 This module simulates the Enigma encryption machine, including rotors, plugboard, and encoding logic.
-Configuration is loaded from a JSON file (see configure.json for format).
+Configuration is loaded from a dictionary or JSON file (see Configuration Sturcture for format).
 
 Configuration Validation Flow:
 -----------------------------
+- Checks type of configuration (dictionary or JSON file).
 - Validation is performed ONCE in the __new__ method (using pretest()).
 - If the configuration is invalid, an exception is raised and the instance is not created.
 - __init__ assumes the configuration is already valid and only initializes the machine.
 
-Configuration File (configure.json) Structure:
+Configuration Structure:
 ----------------------------------------------
 {
     "setting": {
@@ -49,14 +50,31 @@ Configuration File (configure.json) Structure:
 
 Module Contents:
 ----------------
-- plug_test(Plugs): Checks for repeated characters in plugboard cycles.
-- rotor_test(n, rotor): Validates rotor wiring as a permutation of n indices.
-- pretest(file): Validates configuration file for consistency and correctness.
-- Rotor: Class representing a single rotor.
-- plug: Class representing a plugboard cycle.
-- Enigma: Main class for encoding/decoding using the Enigma machine.
+
+Classes:
+    Enigma: Main machine controller (encoding/decoding)
+    Rotor: Individual rotor logic
+    plug: Plugboard cycle logic
+
+Functions:
+    - __check_type(dict or str or Path): Load configuration from dict or JSON file and returns a dictionary.
+    - plug_test(Plugs): Checks for repeated characters in plugboard cycles.
+    - rotor_test(n, rotor): Validates rotor wiring as a permutation of n indices.
+    - pretest(dict): Validates configuration dictionary for consistency and correctness.
+    - Rotor(list, int, Enigma): Class representing a single rotor.
+    - plug(str): Class representing a plugboard cycle.
+    - Enigma(dict): Main class for encoding/decoding using the Enigma machine.
+
+Exceptions:
+    EnigmaError, ConfigurationError, InvalidCharacterError, ValidationError
+
 
 Usage Example:
+-------------
+    >>> enigma = Enigma("configure.json")
+    >>> encoded = ''.join(enigma.main(c) for c in "HELLO")
+    >>> decoded = ''.join(Enigma("configure.json").main(c) for c in encoded)
+    >>> print(decoded)  # 'HELLO'
 -------------
     >>> from Enigma import Enigma
     >>> 
@@ -83,6 +101,7 @@ Usage Example:
 import json
 import logging
 from typing import List, Union, Dict, Tuple, Optional # pyright: ignore[reportShadowedImports]
+from pathlib import Path
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -170,7 +189,44 @@ def rotor_test(n: int, rotor: List[int]) -> Union[bool, Dict[str, List[int]]]:
     else:
         return {"Extra element": extra_elements, "Missing Element": missing_elements}
 
-def pretest(file: str) -> Tuple[Dict[str, bool], Dict[str, Union[str, List[str], Dict[str, List[int]]]]]:
+def __check_type(config: Union[dict, str, Path]) -> dict:
+    """
+    Load Enigma configuration from a dictionary or a JSON file path.
+
+    This utility function allows flexible configuration input: you can supply
+    either a Python dictionary (already loaded config) or a path (str or Path)
+    to a JSON file. The function will always return a dictionary, and provides
+    clear error messages for common issues.
+
+    Args:
+        config (dict or str or Path): Configuration dictionary or path to a JSON file.
+
+    Returns:
+        dict: Parsed configuration dictionary.
+
+    Raises:
+        FileNotFoundError: If the file path does not exist.
+        ValueError: If the JSON file is invalid.
+        RuntimeError: For other file reading errors.
+        TypeError: If the input is not a dict or a valid path.
+
+    """
+    if isinstance(config, dict):
+        return config
+    elif isinstance(config, (str, Path)):
+        try:
+            with open(config, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file not found: {config}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in configuration file '{config}': {e}")
+        except Exception as e:
+            raise RuntimeError(f"Error reading configuration file '{config}': {e}")
+    else:
+        raise TypeError("Config must be a dict or a path to a JSON file.")
+
+def pretest(file: Union[str, dict]) -> Tuple[Dict[str, bool], Dict[str, Union[str, List[str], Dict[str, List[int]]]]]:
     """
     Validate configuration file for consistency and correctness.
     
@@ -197,18 +253,11 @@ def pretest(file: str) -> Tuple[Dict[str, bool], Dict[str, Union[str, List[str],
     logger.info(f"Starting configuration validation for: {file}")
     
     try:
-        with open(file, "r", encoding="utf-8") as fh:
-            key = json.load(fh)
-        logger.debug("Configuration file loaded successfully")
-    except FileNotFoundError:
-        logger.error(f"Configuration file not found: {file}")
-        raise ConfigurationError(f"Configuration file not found: {file}")
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in configuration file: {e}")
-        raise ConfigurationError(f"Invalid JSON in configuration file: {e}")
+        key = __check_type(file)
+        logger.debug("Configuration loaded successfully")
     except Exception as e:
-        logger.error(f"Error reading configuration file: {e}")
-        raise ConfigurationError(f"Error reading configuration file: {e}")
+        logger.error(f"Error loading configuration: {e}")
+        raise ConfigurationError(f"Error loading configuration: {e}")
     
     try:
         number_of_characters = len(key["characters"])
@@ -255,12 +304,15 @@ def pretest(file: str) -> Tuple[Dict[str, bool], Dict[str, Union[str, List[str],
         raise ConfigurationError(f"Unexpected error during validation: {e}")
 
 
+
+
+
 class Rotor:
     """
     Represents a single rotor in the Enigma machine.
     Handles rotor wiring, position, and rotation logic.
     """
-    def __init__(self, rotor: List[int], rotor_position: int, cls) -> None:
+    def __init__(self, rotor: List[int], rotor_position: int, cls: 'Enigma') -> None:
         """
         Initialize the rotor.
         
@@ -374,7 +426,7 @@ class Enigma:
     """
     Main Enigma machine class. Handles loading configuration, managing rotors and plugboard, and encoding characters.
     """
-    def __new__(cls, file: str) -> Optional['Enigma']:
+    def __new__(cls, file: Union[str, dict]) -> Optional['Enigma']:
         """
         Validate configuration before creating an Enigma instance.
         
@@ -421,12 +473,12 @@ class Enigma:
             logger.error(f"Unexpected error loading configuration: {e}")
             raise ConfigurationError(f"Unexpected error loading configuration: {e}")
     
-    def __init__(self, file: str) -> None:
+    def __init__(self, file: Union[str, dict]) -> None:
         """
-        Initialize the Enigma machine from a configuration file.
+        Initialize the Enigma machine from a configuration file or dictionary.
 
         Args:
-            file: Path to the JSON configuration file.
+            file: Path to the JSON configuration file or a configuration dictionary.
 
         Note:
             Configuration validation is performed in __new__ (via pretest()).
@@ -435,8 +487,7 @@ class Enigma:
         logger.debug("Initializing Enigma machine components")
         
         # Load configuration (already validated in __new__)
-        with open(file, "r", encoding="utf-8") as fh:
-            key = json.load(fh)
+        key = __check_type(file)
         
         # Initialize machine settings
         self.number_of_rotors = key["setting"]["number_of_rotors"]

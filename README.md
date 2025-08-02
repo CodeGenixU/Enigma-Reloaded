@@ -1,6 +1,26 @@
 # Enigma Reloaded
 
+![Python Version](https://img.shields.io/badge/python-3.7%2B-blue)
+![License](https://img.shields.io/badge/license-GPLv3-blue)
+![Status](https://img.shields.io/badge/status-stable-green)
+
 **Beast of an Ancient Legend**
+
+---
+
+## Table of Contents
+- [Key Features](#key-features)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Configuration Rules](#configuration-rules)
+- [Usage](#usage)
+- [Module Contents](#module-contents)
+- [Error Handling](#error-handling)
+- [Requirements](#requirements)
+- [Acknowledgments](#acknowledgments)
+- [License](#license)
+- [Author](#author)
+- [Disclaimer](#disclaimer)
 
 ---
 
@@ -13,7 +33,7 @@ Enigma Reloaded is designed for cryptographers, researchers, and enthusiasts see
 - **Highly Configurable Architecture:** Supports any number of rotors, each with fully custom wiring (permutation of indices).
 - **Advanced Plugboard System:** Allows multiple variable length disjoint plugboard cycles for additional scrambling.
 - **Universal Character Set:** Encode and decode using any set of characters, including Unicode, symbols, and custom alphabets.
-- **Modern JSON Configuration:** All settings are loaded from a human-readable JSON file for maximum flexibility.
+- **Modern JSON Configuration:** All settings are loaded from a human-readable JSON file or a nested dictionary for maximum flexibility.
 - **Robust Validation:** Comprehensive configuration checks and error handling ensure cryptographic soundness.
 - **Extensible Design:** Built for experimentation, research, and real-world cryptographic applications.
 - **Logging and Debugging:** Integrated logging for deep inspection and validation feedback.
@@ -50,7 +70,7 @@ print(f"Decoded: {decoded}")
 
 ## Configuration
 
-The Enigma machine is configured via a JSON file (see `configure.json` for an example):
+The Enigma machine is configured via a nested dictionary or a JSON file (see `configure.json` for an example):
 
 ```json
 {
@@ -62,12 +82,15 @@ The Enigma machine is configured via a JSON file (see `configure.json` for an ex
         "plugs": ["ABCD", "@[{()}]?", "0123456789"]
     },
     "characters": ["0", "1", "2", ..., "z", "A", ..., "Z", "!", ..., "•", "£", "¥"],
-    "r1": [ ... ],  // Rotor 1 wiring (permutation of indices)
-    "r2": [ ... ],  // Rotor 2 wiring
-    "r3": [ ... ]   // Rotor 3 wiring
+    "r1": [ ... ],
+    "r2": [ ... ],
+    "r3": [ ... ]
 }
 ```
 
+- **r1:** Rotor 1 wiring (permutation of indices)
+- **r2:** Rotor 2 wiring
+- **r3:** Rotor 3 wiring
 - **number_of_rotors:** Number of rotors in the machine.
 - **sequence_of_rotor:** Order of rotors (e.g., `"r1>r2>r3"`).
 - **iteration:** Initial step count for rotor stepping.
@@ -80,7 +103,7 @@ The Enigma machine is configured via a JSON file (see `configure.json` for an ex
 
 ## Configuration Rules
 
-When creating or editing your `configure.json` file, follow these rules for correct operation:
+When creating or editing your `configure.json` file or a nested dictionary, follow these rules for correct operation:
 
 1. **Characters List**
    - Must be a list of unique characters (no duplicates).
@@ -147,6 +170,7 @@ print(f"Decoded: {decoded}")
 
 ## Module Contents
 
+- `check_type(file or dict)`: Load configuration from a dictionary or a JSON file path and returns a dictionary.
 - `plug_test(plugs)`: Checks for repeated characters in plugboard cycles.
 - `rotor_test(n, rotor)`: Validates rotor wiring as a permutation of n indices.
 - `pretest(file)`: Validates configuration file for consistency and correctness.
@@ -161,6 +185,35 @@ print(f"Decoded: {decoded}")
 - **ConfigurationError:** Raised for issues with the configuration file.
 - **InvalidCharacterError:** Raised if a character is not in the configured character set.
 - **ValidationError:** Raised if configuration validation fails.
+- **EnigmaError:** Base class for all Enigma-related errors.
+
+---
+
+## Acknowledgments
+
+This project was developed with valuable assistance and contributions from various sources:
+
+### Development Assistance
+- **Cursor:** Provided comprehensive code review and documentation. While suggesting advanced features like type hint and logging. Also helped with designing error handling system.
+- **Windsurf AI (Cascade):** Provided comprehensive code review, documentation improvements, type hint corrections, and error handling throughout the development process.
+- **ChatGPT, Claude, Gemini, Perplexity, DeepSeek:** For providing power insights and suggestions.
+- **Python Community:** For excellent documentation and best practices that guided the implementation.
+
+### Technical Inspiration
+- **Historical Enigma Machine:** The foundational cryptographic principles that inspired this modern implementation.
+- **Modern Cryptography Research:** Academic papers and resources on rotor-based encryption systems.
+
+### Tools and Resources
+- **Python Standard Library:** For providing robust, dependency-free functionality.
+- **GitHub:** For version control and project hosting.
+- **Markdown:** For clear, readable documentation formatting.
+
+### Special Thanks
+- To the open-source community for promoting knowledge sharing and collaborative development.
+- To cryptography researchers and educators who make complex concepts accessible.
+- To anyone who tests, uses, or contributes to this project.
+
+If you've contributed to this project in any way and aren't listed here, please let me know so I can add your acknowledgment!
 
 ---
 
