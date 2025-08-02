@@ -3,7 +3,7 @@
         "number_of_rotors" : 3,
         "sequence_of_rotor" : "r1>r2>r3",
         "iteration": 25,
-        "rotation_factor": 100,
+        "rotation_factor": 0,
         "plugs": ["ABCD","@[{()}]?","0123456789"]
     },
     "characters": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",

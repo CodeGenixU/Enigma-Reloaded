@@ -21,7 +21,7 @@
 - [License](#license)
 - [Author](#author)
 - [Disclaimer](#disclaimer)
-
+- [Special Message](#special-message)
 ---
 
 This project is not a classic Enigma simulation, but an advanced, extensible cryptographic machine. While its core draws inspiration from the legendary Enigma, this implementation is fundamentally different and vastly more powerful. It features a highly flexible architecture, supporting arbitrary character sets, customizable rotor logic, advanced plugboard cycles, and modern validation and configuration mechanisms.
@@ -33,7 +33,7 @@ Enigma Reloaded is designed for cryptographers, researchers, and enthusiasts see
 - **Highly Configurable Architecture:** Supports any number of rotors, each with fully custom wiring (permutation of indices).
 - **Advanced Plugboard System:** Allows multiple variable length disjoint plugboard cycles for additional scrambling.
 - **Universal Character Set:** Encode and decode using any set of characters, including Unicode, symbols, and custom alphabets.
-- **Modern JSON Configuration:** All settings are loaded from a human-readable JSON file or a nested dictionary for maximum flexibility.
+- **Modern JSON & Dictionary Configuration:** All settings are loaded from a human-readable JSON file or a nested dictionary for maximum flexibility.
 - **Robust Validation:** Comprehensive configuration checks and error handling ensure cryptographic soundness.
 - **Extensible Design:** Built for experimentation, research, and real-world cryptographic applications.
 - **Logging and Debugging:** Integrated logging for deep inspection and validation feedback.
@@ -124,11 +124,10 @@ When creating or editing your `configure.json` file or a nested dictionary, foll
    - `number_of_rotors`: Must match the number of rotor definitions (`r1`, `r2`, etc.).
    - `sequence_of_rotor`: Must specify all rotors in the desired order (e.g., `"r1>r2>r3"`).
    - `iteration`: Non-negative integer, sets the initial step count.
-   - `rotation_factor`: Positive integer, controls the stepping logic.
+   - `rotation_factor`: Positive integer, controls the stepping logic or 0 for classic enigma stepping mechanism. (Note: Every rotor rotates after moving n steps of the previous rotor, where n is the rotation_factor)
 
 5. **General**
    - All fields are required unless otherwise noted.
-   - Comments are not allowed in standard JSON (remove `//` comments for actual use).
    - Validate your configuration using the provided validation functions or by instantiating the Enigma class.
 
 ---
@@ -170,22 +169,21 @@ print(f"Decoded: {decoded}")
 
 ## Module Contents
 
-- `check_type(file or dict)`: Load configuration from a dictionary or a JSON file path and returns a dictionary.
-- `plug_test(plugs)`: Checks for repeated characters in plugboard cycles.
-- `rotor_test(n, rotor)`: Validates rotor wiring as a permutation of n indices.
-- `pretest(file)`: Validates configuration file for consistency and correctness.
-- `Rotor`: Class representing a single rotor.
-- `plug`: Class representing a plugboard cycle.
-- `Enigma`: Main class for encoding/decoding using the Enigma machine.
+### Functions
+- `pretest(file)`: Comprehensive configuration validation including rotors, plugs, and characters
+- `plug_test(plugs)`: Validate plugboard cycles for repeated characters and conflicts
+- `rotor_test(n, rotor)`: Validate rotor wiring as a proper permutation of n character indices
 
----
+### Classes
+- `Enigma`: Main machine controller handling configuration, rotors, plugboard, and encoding
+- `Rotor`: Individual rotor with wiring, position tracking, and stepping logic
+- `plug`: Plugboard cycle implementation for character swapping/substitution
 
-## Error Handling
-
-- **ConfigurationError:** Raised for issues with the configuration file.
-- **InvalidCharacterError:** Raised if a character is not in the configured character set.
-- **ValidationError:** Raised if configuration validation fails.
-- **EnigmaError:** Base class for all Enigma-related errors.
+### Exceptions
+- `EnigmaError`: Base exception for all Enigma-related errors
+- `ConfigurationError`: Raised for issues with configuration files or data
+- `InvalidCharacterError`: Raised when a character is not in the configured character set
+- `ValidationError`: Raised when configuration validation fails
 
 ---
 
@@ -194,10 +192,10 @@ print(f"Decoded: {decoded}")
 This project was developed with valuable assistance and contributions from various sources:
 
 ### Development Assistance
-- **Cursor:** Provided comprehensive code review and documentation. While suggesting advanced features like type hint and logging. Also helped with designing error handling system.
-- **Windsurf AI (Cascade):** Provided comprehensive code review, documentation improvements, type hint corrections, and error handling throughout the development process.
-- **ChatGPT, Claude, Gemini, Perplexity, DeepSeek:** For providing power insights and suggestions.
-- **Python Community:** For excellent documentation and best practices that guided the implementation.
+- **Cursor IDE:** Provided comprehensive code review, documentation assistance, and advanced feature suggestions including type hints, logging, and error handling system design.
+- **Windsurf AI (Cascade):** Contributed comprehensive code review, documentation improvements, type hint corrections, character validation enhancements, and error handling throughout the development process.
+- **AI Development Tools:** ChatGPT, Claude, Gemini, Perplexity, and DeepSeek provided valuable insights and suggestions during development.
+- **Python Community:** Excellent documentation and best practices that guided the implementation and architectural decisions.
 
 ### Technical Inspiration
 - **Historical Enigma Machine:** The foundational cryptographic principles that inspired this modern implementation.
@@ -232,3 +230,90 @@ Utkarsh(CodeGenixU)
 ## Disclaimer
 
 This project is intended for educational and research purposes only. While it implements advanced cryptographic concepts, it is not recommended for securing sensitive or production data.
+
+## Special Message
+
+This is a special message for mischievous and enthusiastic users & explorers. Even though this project doesn't have any hidden Easter eggs, I encourage you to explore the code, experiment with configurations, and push the boundaries of what this cryptographic machine can do. Your creativity and curiosity are the true keys to unlocking its potential. For experimenting with the code, I recommend keeping some things in mind and following these suggestions for experimentation.
+
+- **Reflector Logic:** You can implement your own reflector logic by creating a new class that inherits from the `Enigma` class and overriding the `main` method to implement your custom logic. While making the new reflector logic, make sure to keep a few points in mind.
+
+    - The reflector logic should be a bijective function in the domain.
+    - The reflector logic should have the same domain and range, both from 0 to N-1 where N is the number of characters in the characters list.
+
+- **Rotor Stepping Logic:** You can implement your own rotor logic by creating a new class that inherits from the `Rotor` class and overriding the `__fcode` method to implement your custom logic. While making the new rotor stepping logic, make sure to keep in mind that the stepping logic is properly defined and rotates the rotor.
+
+## Extra Assistance for Special Mischievous Users
+
+- **Reflector Logic**
+
+```python
+def main(self, char: str) -> str:
+    """Override this method to implement custom reflector logic."""
+    if char not in self.characters:
+        logger.error(f"Invalid character '{char}' not in character set")
+        raise InvalidCharacterError(f"Character '{char}' is not in the configured character set")
+    
+    logger.debug(f"Processing character: '{char}'")
+    
+    # Forward pass through plugboard and rotors
+    first_encode = self.__plugin(char)
+    rotor_encode = self.__prerotor(first_encode)
+    for i in self.rotor:
+        rotor_encode = self.rotor[i].__fcode(rotor_encode)
+    
+    # CUSTOM REFLECTOR LOGIC - Replace this line with your implementation
+    # Example: reflector = (rotor_encode + 13) % len(self.characters)  # Simple Caesar shift
+    # Example: reflector = self.custom_reflection_table[rotor_encode]   # Custom lookup table
+    reflector = rotor_encode  # Default: no reflection (placeholder)
+    
+    # Backward pass through rotors and plugboard
+    for i in range(self.number_of_rotors - 1, -1, -1):
+        reflector = self.rotor[i].__bcode(reflector)
+    rotor_decode = self.__postrotor(reflector)
+    final_encode = self.__plugin(rotor_decode, 1)
+    self.iteration += 1
+    
+    logger.debug(f"Encoded '{char}' -> '{final_encode}' (iteration: {self.iteration})")
+    return final_encode
+```
+
+- **Rotor Logic**
+
+```python
+def __fcode(self, n: int) -> int:
+    """Override this method to implement custom rotor stepping logic."""
+    
+    # CUSTOM STEPPING LOGIC - Replace this condition with your implementation
+    # Example: if self.iteration % 26 == 0:  # Step every 26 characters
+    # Example: if n in self.turnover_positions:  # Step at specific positions
+    # Example: if self.should_step():  # Custom stepping function
+    if self.iteration % (self.n) ** self.position == 0:  # Default stepping logic
+        self.__rotate()
+    
+    return self.rotor[n]
+```
+
+### Usage Instructions
+
+To implement custom logic:
+
+1. **For Custom Reflector Logic**: Create a class that inherits from `Enigma` and override the `main` method using the reflector template above.
+2. **For Custom Rotor Stepping**: Create a class that inherits from `Rotor` and override the `__fcode` method using the rotor template above.
+3. **For Custom Rotor Stepping**: There is a separate variable rotation_base in the Enigma class and rotation_factor in the Configuration which can be helpful in designing and implementing custom rotor stepping logic without modifying the Configuration.
+4. **Important Notes**:
+   - Ensure your reflector logic maintains the bijective property (each input maps to exactly one output and each has same domain and range of [0, n - 1] where n is the number of characters in the characters list)
+   - Keep rotor stepping logic consistent with your cryptographic requirements
+   - Test thoroughly with your specific character set and configuration
+
+**Example Implementation**:
+```python
+class CustomEnigma(Enigma):
+    def main(self, char: str) -> str:
+        # Use the reflector template with your custom logic
+        pass
+
+class CustomRotor(Rotor):
+    def __fcode(self, n: int) -> int:
+        # Use the rotor template with your custom stepping logic
+        pass
+```

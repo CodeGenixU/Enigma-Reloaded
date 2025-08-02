@@ -18,7 +18,7 @@
 Enigma Reloaded - Beast of an Ancient Legend
 --------------------------------------------
 This module simulates the Enigma encryption machine, including rotors, plugboard, and encoding logic.
-Configuration is loaded from a dictionary or JSON file (see Configuration Sturcture for format).
+Configuration is loaded from a dictionary or JSON file (see Configuration Structure for format).
 
 Configuration Validation Flow:
 -----------------------------
@@ -41,7 +41,7 @@ Configuration Structure:
     "r1": [int, ...],                    # Rotor 1 wiring (permutation of indices)
     "r2": [int, ...],                    # Rotor 2 wiring
     "r3": [int, ...]                     # Rotor 3 wiring
-    // ... more rotors as needed
+    # ... more rotors as needed (r4, r5, etc.)
 }
 
 - The "setting" object defines the machine's configuration.
@@ -57,13 +57,15 @@ Classes:
     plug: Plugboard cycle logic
 
 Functions:
-    - __check_type(dict or str or Path): Load configuration from dict or JSON file and returns a dictionary.
-    - plug_test(Plugs): Checks for repeated characters in plugboard cycles.
-    - rotor_test(n, rotor): Validates rotor wiring as a permutation of n indices.
-    - pretest(dict): Validates configuration dictionary for consistency and correctness.
-    - Rotor(list, int, Enigma): Class representing a single rotor.
-    - plug(str): Class representing a plugboard cycle.
-    - Enigma(dict): Main class for encoding/decoding using the Enigma machine.
+    - __check_type(config): Load and validate configuration from dict, JSON file path, or Path object
+    - plug_test(plugs): Validate plugboard cycles for repeated characters and conflicts
+    - rotor_test(n, rotor): Validate rotor wiring as a proper permutation of n character indices
+    - pretest(file): Comprehensive configuration validation including rotors, plugs, and characters
+
+Classes:
+    - Rotor: Individual rotor with wiring, position tracking, and stepping logic
+    - plug: Plugboard cycle implementation for character swapping/substitution
+    - Enigma: Main machine controller handling configuration, rotors, plugboard, and encoding
 
 Exceptions:
     EnigmaError, ConfigurationError, InvalidCharacterError, ValidationError
@@ -260,13 +262,43 @@ def pretest(file: Union[str, dict]) -> Tuple[Dict[str, bool], Dict[str, Union[st
         raise ConfigurationError(f"Error loading configuration: {e}")
     
     try:
-        number_of_characters = len(key["characters"])
+        characters = key["characters"]
+        number_of_characters = len(characters)
         number_of_rotors = key["setting"]["number_of_rotors"]
         sequence_of_rotor = key["setting"]["sequence_of_rotor"].split(">")
-        check_list: Dict[str, bool] = {"Configuration": True, "Plugs": True}
+        check_list: Dict[str, bool] = {"Characters": True, "Configuration": True, "Plugs": True}
         error_list: Dict[str, Union[str, List[str], Dict[str, List[int]]]] = {}
         
         logger.debug(f"Validating {number_of_rotors} rotors with {number_of_characters} characters")
+        
+        # Validate character list
+        character_errors = []
+        
+        # Check for empty character list
+        if number_of_characters == 0:
+            character_errors.append("Character list is empty")
+        
+        # Check for duplicate characters
+        unique_characters = set(characters)
+        if number_of_characters != len(unique_characters):
+            duplicates = [char for char in unique_characters if characters.count(char) > 1]
+            character_errors.append(f"Duplicate characters found: {duplicates}")
+        
+        # Check that all elements are single characters (strings of length 1)
+        non_single_chars = [char for char in characters if not isinstance(char, str) or len(char) != 1]
+        if non_single_chars:
+            character_errors.append(f"Non-single character elements found: {non_single_chars[:5]}{'...' if len(non_single_chars) > 5 else ''}")
+        
+        # Check for None or empty string characters
+        invalid_chars = [i for i, char in enumerate(characters) if char is None or char == ""]
+        if invalid_chars:
+            character_errors.append(f"Invalid characters (None/empty) at indices: {invalid_chars[:10]}{'...' if len(invalid_chars) > 10 else ''}")
+        
+        if character_errors:
+            check_list["Characters"] = False
+            error_list["Characters"] = character_errors
+            for error in character_errors:
+                logger.error(f"Character validation error: {error}")
         
         for i in sequence_of_rotor:
             check_list[i] = True
@@ -425,13 +457,22 @@ class plug:
 class Enigma:
     """
     Main Enigma machine class. Handles loading configuration, managing rotors and plugboard, and encoding characters.
+    
+    Attributes:
+        characters (List[str]): Character set used for encoding/decoding
+        number_of_rotors (int): Number of rotors in the machine
+        iteration (int): Current step count (affects rotor positions)
+        rotation_base (int): Base value for rotor stepping calculations
+        rotor (Dict[int, Rotor]): Dictionary of rotor instances indexed by position
+        plug (List[str]): List of plugboard cycle strings from configuration
+        plugs (Dict[str, plug]): Dictionary of plugboard cycle instances
     """
-    def __new__(cls, file: Union[str, dict]) -> Optional['Enigma']:
+    def __new__(cls, file: Union[str, dict]) -> 'Enigma':
         """
         Validate configuration before creating an Enigma instance.
         
         Args:
-            file: Path to the JSON configuration file.
+            file: Path to the JSON configuration file or configuration dictionary.
             
         Returns:
             Enigma instance if validation passes.
@@ -488,28 +529,32 @@ class Enigma:
         
         # Load configuration (already validated in __new__)
         key = __check_type(file)
-        
-        # Initialize machine settings
+
+        # Set character set
+        self.characters = key["characters"]
+
+        # Initialize machine settings (number of rotors, initial iteration, and rotation base)
+        # rotation_base: Used in rotor stepping logic. If rotation_factor is 0 in config,
+        # defaults to character set length for classic Enigma behavior; otherwise uses the configured value.
+        # This allows custom stepping patterns without modifying the configuration file.
         self.number_of_rotors = key["setting"]["number_of_rotors"]
         self.iteration = key["setting"]["iteration"]
-        self.rotation_base = key["setting"]["rotation_factor"]
-        
+        self.rotation_base = len(self.characters) if key["setting"]["rotation_factor"] == 0 else key["setting"]["rotation_factor"]
+
         # Initialize rotors in the specified sequence
         sequence_parts = key["setting"]["sequence_of_rotor"].split(">")
         self.rotor: Dict[int, Rotor] = {}
         for i in range(self.number_of_rotors):
             rotor_name = sequence_parts[i]
             self.rotor[i] = Rotor(key[rotor_name], i, self)
-        
-        # Initialize plugboard
+
+        # Initialize plugboard cycles and plug objects
         self.plug = key["setting"]["plugs"]
         self.plugs: Dict[str, plug] = {}
         for i in self.plug:
             self.plugs[i] = plug(i)
-        
-        # Set character set
-        self.characters = key["characters"]
-        
+
+        # Log successful initialization
         logger.info(f"Enigma machine initialized with {self.number_of_rotors} rotors and {len(self.characters)} characters")
     
     def __plugin(self, char: str, mode: int = 0) -> str:
