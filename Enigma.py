@@ -1,18 +1,3 @@
-# Enigma Reloaded - Beast of an Ancient Legend
-# Copyright (C) 2025  Utkarsh
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 Enigma Reloaded - Beast of an Ancient Legend
@@ -57,7 +42,7 @@ Classes:
     plug: Plugboard cycle logic
 
 Functions:
-    - __check_type(config): Load and validate configuration from dict, JSON file path, or Path object
+    - check_type(config): Load and validate configuration from dict, JSON file path, or Path object
     - plug_test(plugs): Validate plugboard cycles for repeated characters and conflicts
     - rotor_test(n, rotor): Validate rotor wiring as a proper permutation of n character indices
     - pretest(file): Comprehensive configuration validation including rotors, plugs, and characters
@@ -191,7 +176,7 @@ def rotor_test(n: int, rotor: List[int]) -> Union[bool, Dict[str, List[int]]]:
     else:
         return {"Extra element": extra_elements, "Missing Element": missing_elements}
 
-def __check_type(config: Union[dict, str, Path]) -> dict:
+def check_type(config: Union[dict, str, Path]) -> dict:
     """
     Load Enigma configuration from a dictionary or a JSON file path.
 
@@ -255,7 +240,7 @@ def pretest(file: Union[str, dict]) -> Tuple[Dict[str, bool], Dict[str, Union[st
     logger.info(f"Starting configuration validation for: {file}")
     
     try:
-        key = __check_type(file)
+        key = check_type(file)
         logger.debug("Configuration loaded successfully")
     except Exception as e:
         logger.error(f"Error loading configuration: {e}")
@@ -371,7 +356,7 @@ class Rotor:
         """
         self.rotor.append(self.rotor.pop(0))
 
-    def __fcode(self, n: int) -> int:
+    def fcode(self, n: int) -> int:
         """
         Forward encoding through the rotor.
         
@@ -389,7 +374,7 @@ class Rotor:
             self.__rotate()
         return self.rotor[n]
     
-    def __bcode(self, n: int) -> int:
+    def bcode(self, n: int) -> int:
         """
         Backward encoding through the rotor (inverse mapping).
         
@@ -438,7 +423,7 @@ class plug:
         x = plug_cycle.index(character) + 1
         return plug_cycle[x if x < len(plug_cycle) else 0]
     
-    def __plugs(self, character: str, mode: int) -> str:
+    def plugs(self, character: str, mode: int) -> str:
         """
         Swap character using the plugboard cycle.
         
@@ -528,7 +513,7 @@ class Enigma:
         logger.debug("Initializing Enigma machine components")
         
         # Load configuration (already validated in __new__)
-        key = __check_type(file)
+        key = check_type(file)
 
         # Set character set
         self.characters = key["characters"]
@@ -574,7 +559,7 @@ class Enigma:
         """
         for i in self.plug:
             if char in i:
-                return self.plugs[i].__plugs(char, mode)
+                return self.plugs[i].plugs(char, mode)
         else:
             return char
     
@@ -649,12 +634,12 @@ class Enigma:
         rotor_encode = self.__prerotor(first_encode)
         # Pass through all rotors (forward)
         for i in self.rotor:
-            rotor_encode = self.rotor[i].__fcode(rotor_encode)
+            rotor_encode = self.rotor[i].fcode(rotor_encode)
         # Reflector (reverse the signal)
         reflector = len(self.characters) - 1 - rotor_encode
         # Pass back through all rotors (backward)
         for i in range(self.number_of_rotors - 1, -1, -1):
-            reflector = self.rotor[i].__bcode(reflector)
+            reflector = self.rotor[i].bcode(reflector)
         # Convert back to character
         rotor_decode = self.__postrotor(reflector)
         # Pass through plugboard (backward)
