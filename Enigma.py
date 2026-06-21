@@ -1,6 +1,5 @@
-
 """
-Enigma Reloaded - Beast of an Ancient Legend
+Axiom - Beast of an Ancient Legend
 --------------------------------------------
 This module simulates the Enigma encryption machine, including rotors, plugboard, and encoding logic.
 Configuration is loaded from a dictionary or JSON file (see Configuration Structure for format).
@@ -329,7 +328,7 @@ class Rotor:
     Represents a single rotor in the Enigma machine.
     Handles rotor wiring, position, and rotation logic.
     """
-    def __init__(self, rotor: List[int], rotor_position: int, cls: 'Enigma') -> None:
+    def __init__(self, rotor: List[int], rotor_position: int, cls: 'EnigmaClass') -> None:
         """
         Initialize the rotor.
         
@@ -338,23 +337,25 @@ class Rotor:
             rotor_position: The position of this rotor in the machine (0 = rightmost).
             cls: Reference to the Enigma instance for iteration and base.
         """
-        self.iteration = cls.iteration
+        # Keep a reference to the parent Enigma instance so the rotor can read the current iteration.
+        self.enigma = cls
         self.n = cls.rotation_base
         self.position = rotor_position
-        self.original_rotor = rotor  # Keep original for memory efficiency
+        self.rotor = rotor
+        self.rotor_size = len(self.rotor)
+        self.reverse_rotor = [0] * self.rotor_size
+        for i, val in enumerate(self.rotor):
+            self.reverse_rotor[val] = i
         
-        # Calculate initial rotation based on iteration and position
-        if self.iteration != 0:
-            rotation_factor = self.iteration % (self.n) ** self.position
-            self.rotor = rotor[rotation_factor:] + rotor[0:rotation_factor]
-        else:
-            self.rotor = rotor
+        
+        # Calculate initial rotation based on enigma iteration and position
+        self.pointer = self.enigma.iteration % (self.n ** self.position)
         
     def __rotate(self) -> None:
         """
         Rotate the rotor by one position (step forward).
         """
-        self.rotor.append(self.rotor.pop(0))
+        self.pointer += 1
 
     def fcode(self, n: int) -> int:
         """
@@ -370,9 +371,16 @@ class Rotor:
         Returns:
             Encoded character index after forward rotor processing
         """
-        if self.iteration % (self.n) ** self.position == 0:
-            self.__rotate()
-        return self.rotor[n]
+        # 1. Apply offset to the input index
+        input_index = (n + self.pointer) % self.rotor_size
+        
+        # 2. Find the encoded value using the fixed wiring list
+        output_shifted_index = self.rotor[input_index]
+        
+        # 3. Subtract the offset from the output to align it correctly
+        output_index = (output_shifted_index - self.pointer) % self.rotor_size
+
+        return output_index
     
     def bcode(self, n: int) -> int:
         """
@@ -388,7 +396,18 @@ class Rotor:
         Returns:
             Decoded character index after backward rotor processing
         """
-        return self.rotor.index(n)
+        # 1. Apply the offset to the input value to account for the rotation
+        input_value_shifted = (n + self.pointer) % self.rotor_size
+        
+        # 2. Find the index of this shifted value in the list (the inverse mapping)
+        output_index_shifted = self.reverse_rotor[input_value_shifted]
+
+        # 3. Subtract the offset from the resulting index to align it correctly
+        output_index = (output_index_shifted - self.pointer) % self.rotor_size
+        
+        if self.enigma.iteration % (self.n ** self.position) == 0:
+            self.__rotate()
+        return output_index
 
 class plug:
     """
@@ -439,7 +458,7 @@ class plug:
         """
         return self.__search(self.fplugs, character) if mode == 0 else self.__search(self.bplugs, character)
  
-class Enigma:
+class EnigmaClass:
     """
     Main Enigma machine class. Handles loading configuration, managing rotors and plugboard, and encoding characters.
     
@@ -452,7 +471,7 @@ class Enigma:
         plug (List[str]): List of plugboard cycle strings from configuration
         plugs (Dict[str, plug]): Dictionary of plugboard cycle instances
     """
-    def __new__(cls, file: Union[str, dict]) -> 'Enigma':
+    def __new__(cls, file: Union[str, dict]) -> 'EnigmaClass':
         """
         Validate configuration before creating an Enigma instance.
         
@@ -649,3 +668,19 @@ class Enigma:
         
         logger.debug(f"Encoded '{char}' -> '{final_encode}' (iteration: {self.iteration})")
         return final_encode
+
+
+# Backwards-compatible module-style namespace expected by tests:
+from types import SimpleNamespace
+Enigma = SimpleNamespace(
+    Enigma=EnigmaClass,
+    plug_test=plug_test,
+    rotor_test=rotor_test,
+    check_type=check_type,
+    pretest=pretest,
+    InvalidCharacterError=InvalidCharacterError,
+    ConfigurationError=ConfigurationError,
+    EnigmaError=EnigmaError,
+    plug=plug,
+    Rotor=Rotor
+)
